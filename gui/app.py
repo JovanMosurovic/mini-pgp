@@ -11,7 +11,9 @@ Architecture:
 """
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, ttk, simpledialog
+
+from core.keyrings import PrivateKeyRing, PublicKeyRing
 
 
 # ===========================================================================
@@ -71,6 +73,8 @@ def apply_theme(root):
 class Controller:
     def __init__(self, notify=None):
         self._notify = notify or (lambda message: None)
+        self.private_ring = PrivateKeyRing()
+        self.public_ring = PublicKeyRing()
 
     def set_notifier(self, notify):
         self._notify = notify
@@ -80,28 +84,105 @@ class Controller:
 
     # --- Kljucevi ---------------------------------------------------------
     def generate_keypair(self, name, email, bits, password):
-        self._placeholder("Generisanje RSA para kljuceva")
+        name, email = name.strip(), email.strip()
+        if not name or not email:
+            messagebox.showerror("Greska", "Ime i email su obavezni.")
+            return
+        if not password:
+            messagebox.showerror("Greska", "Lozinka za privatni kljuc je obavezna.")
+            return
+        try:
+            key_id = self.private_ring.add(name, email, int(bits), password)
+        except Exception as e:
+            messagebox.showerror("Greska pri generisanju", str(e))
+            return
+        self.status(f"Generisan par kljuceva (Key ID {key_id}).")
 
     def delete_key(self, key_id):
-        self._placeholder("Brisanje izabranog kljuca")
+        if not key_id:
+            messagebox.showinfo("Brisanje", "Nije izabran kljuc.")
+            return
+        removed = self.private_ring.remove(key_id) or self.public_ring.remove(key_id)
+        if removed:
+            self.status(f"Obrisan kljuc {key_id}.")
+        else:
+            messagebox.showinfo("Brisanje", "Kljuc nije pronadjen.")
 
     def import_public_pem(self, path):
-        self._placeholder("Uvoz javnog kljuca")
+        name = simpledialog.askstring("Uvoz javnog kljuca", "Ime vlasnika:")
+        if not name:
+            return
+        email = simpledialog.askstring("Uvoz javnog kljuca", "Email vlasnika:")
+        if not email:
+            return
+        try:
+            key_id = self.public_ring.import_pem(path, name, email)
+        except Exception as e:
+            messagebox.showerror("Greska pri uvozu", str(e))
+            return
+        self.status(f"Uvezen javni kljuc {key_id}.")
 
     def import_private_pem(self, path):
-        self._placeholder("Uvoz privatnog kljuca")
+        file_password = simpledialog.askstring("Uvoz para", "Lozinka .pem fajla:", show="*")
+        if file_password is None:
+            return
+        name = simpledialog.askstring("Uvoz para", "Ime vlasnika:")
+        if not name:
+            return
+        email = simpledialog.askstring("Uvoz para", "Email vlasnika:")
+        if not email:
+            return
+        ring_password = simpledialog.askstring("Uvoz para", "Nova lozinka za cuvanje u prstenu:", show="*")
+        if not ring_password:
+            return
+        try:
+            key_id = self.private_ring.import_pem(path, file_password, name, email, ring_password)
+        except Exception as e:
+            messagebox.showerror("Greska pri uvozu", str(e))
+            return
+        self.status(f"Uvezen par kljuceva {key_id}.")
 
     def export_public_pem(self, key_id, path):
-        self._placeholder("Izvoz javnog kljuca")
+        if not key_id:
+            messagebox.showinfo("Izvoz", "Nije izabran kljuc.")
+            return
+        try:
+            entry = self.private_ring.find(key_id) or self.public_ring.get(key_id)
+            if entry is None:
+                raise KeyError(f"Kljuc {key_id} nije pronadjen.")
+            with open(path, "w") as f:
+                f.write(entry["public_key_pem"])
+        except Exception as e:
+            messagebox.showerror("Greska pri izvozu", str(e))
+            return
+        self.status(f"Izvezen javni kljuc {key_id}.")
 
     def export_keypair(self, key_id, path):
-        self._placeholder("Izvoz para kljuceva")
+        if not key_id:
+            messagebox.showinfo("Izvoz", "Nije izabran kljuc.")
+            return
+        if self.private_ring.find(key_id) is None:
+            messagebox.showerror("Izvoz para",
+                                 "Ceo par se moze izvesti samo iz prstena privatnih kljuceva.")
+            return
+        ring_password = simpledialog.askstring("Izvoz para", "Lozinka privatnog kljuca:", show="*")
+        if not ring_password:
+            return
+        out_password = simpledialog.askstring("Izvoz para", "Lozinka za izvezeni .pem:", show="*")
+        if not out_password:
+            return
+        try:
+            self.private_ring.export_pem(key_id, path, ring_password, out_password)
+        except Exception as e:
+            messagebox.showerror("Greska pri izvozu", str(e))
+            return
+        self.status(f"Izvezen par kljuceva {key_id}.")
 
     def list_private_keys(self):
-        return self._placeholder_keys()
+        return self.private_ring.to_rows()
 
     def list_public_keys(self):
-        return self._placeholder_keys()
+        return self.public_ring.to_rows()
 
     # --- Slanje -----------------------------------------------------------
     def send_message(self, options):
