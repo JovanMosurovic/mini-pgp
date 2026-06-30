@@ -1,17 +1,13 @@
 """
 MiniPGP - Tkinter GUI.
 
-Arhitektura (vazno za odbranu i kasnije prosirenje):
+Architecture:
 
-    MiniPGPApp                glavni prozor: tema, notebook, status bar
-      +-- Controller          JEDINA tacka spajanja sa logikom (core/*)
-      +-- KeysTab             generisanje, brisanje, uvoz/izvoz, prsteni
-      +-- SendTab             potpis / enkripcija / kompresija / radix-64
-      +-- ReceiveTab          decode -> decrypt -> decompress -> verify
-
-GUI nigde ne poziva kriptografiju direktno - sve ide preko `Controller`.
-Kada budu spremni keyrings.py i pipeline.py, dovoljno je popuniti metode
-u klasi `Controller`; tabovi se ne menjaju.
+    MiniPGPApp                  main window: theme, notebook, status bar
+      +-- Controller            ONLY connection with the logic (core/*)
+      +-- KeysTab               generating, deleting, importing/exporting, rings
+      +-- SendTab               signature / encryption / compression / radix-64
+      +-- ReceiveTab            decode -> decrypt -> decompress -> verify
 """
 
 import tkinter as tk
