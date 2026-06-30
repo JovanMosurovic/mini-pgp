@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.exceptions import InvalidSignature
 
 try:
-    from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
+    from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES, CAST5
 except ImportError:  # for older versions
     from cryptography.hazmat.primitives.ciphers.algorithms import TripleDES
 
@@ -192,7 +192,7 @@ def sha1(data):
 # Name -> (algorithm_class, key_length [bytes], block_length [bytes])
 _ALGOS = {
     "AES128": (algorithms.AES, 16, 16),  # 128-bit key, 128-bit block
-    "3DES": (TripleDES, 24, 8)           # 192-bit key, 64-bit block
+    "3DES": (algorithms.TripleDES, 24, 8),           # 192-bit key, 64-bit block
 }
 
 def new_session_key(algorithm):
