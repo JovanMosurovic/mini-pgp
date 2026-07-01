@@ -143,8 +143,8 @@ class PublicKeyRing:
             "name":           name,
             "email":          email,
             "bits":           public_key.key_size,
-            "owner_trust":      owner_trust,             # 1-10 or None (optional)
-            "signature_trusts": signature_trusts or [],  # list (optional)
+            "owner_trust":      owner_trust,             # 1-10 or None
+            "signature_trusts": signature_trusts or [],
         }
         return key_id
 
