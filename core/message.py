@@ -161,6 +161,7 @@ class PgpMessage:
 
         with open(path, "wb") as f:
             f.write(output)
+        return path
 
     @classmethod
     def receive(
@@ -168,7 +169,8 @@ class PgpMessage:
         path,
         private_ring = None,
         public_ring = None,
-        receiver_password = None
+        receiver_password = None,
+        receiver_public_key_id = None
     ):
         with open(path, "rb") as f:
             raw = f.read()
@@ -193,7 +195,8 @@ class PgpMessage:
         #    pa tim session key-em desifrujemo telo poruke.
 
         if encrypt:
-            private_key = private_ring.get_private_key(outer_packet["recipient_public_key_id"], receiver_password)
+            key_id = receiver_public_key_id or outer_packet["recipient_public_key_id"]
+            private_key = private_ring.get_private_key(key_id, receiver_password)
 
             session_key = rsa_decrypt(private_key, _b64d(outer_packet["session_key"]))
 
