@@ -162,8 +162,82 @@ class PgpMessage:
         with open(path, "wb") as f:
             f.write(output)
 
+    @classmethod
+    def receive(
+        cls,
+        path,
+        private_ring = None,
+        public_ring = None,
+        receiver_password = None
+    ):
+        with open(path, "rb") as f:
+            raw = f.read()
 
+        # 1. Ako je fajl radix64, prvo ga dekodujemo.
+        #    Najlakse: prvo probamo direktno JSON, ako ne uspe, probamo base64 pa JSON.
 
+        try:
+            outer_packet = _json_obj(raw)
+        except Exception:
+            outer_packet = _json_obj(base64.b64decode(raw))
 
+        sign = outer_packet["sign"]
+        encrypt = outer_packet["encrypt"]
+        compress = outer_packet["compress"]
+        radix64 = outer_packet["radix64"]
 
+        body = _b64d(outer_packet["data"])
 
+        # 2. Ako je poruka sifrovana:
+        #    privatnim kljucem primaoca desifrujemo session key,
+        #    pa tim session key-em desifrujemo telo poruke.
+
+        if encrypt:
+            private_key = private_ring.get_private_key(outer_packet["recipient_public_key_id"], receiver_password)
+
+            session_key = rsa_decrypt(private_key, _b64d(outer_packet["session_key"]))
+
+            body = symmetrical_decrypt(outer_packet["algorithm"], session_key, body)
+
+        # 3. Ako je poruka kompresovana, dekompresujemo je.
+        if compress:
+            body = zlib.decompress(body)
+
+        # 4. Sada dobijamo inner packet, tj. originalnu poruku + potpis.
+        inner_packet = _json_obj(body)
+
+        msg = cls(
+            sign=sign,
+            encrypt=encrypt,
+            compress=compress,
+            radix64=radix64,
+
+            data=inner_packet["data"],
+            filename=inner_packet["filename"],
+            timestamp=inner_packet["timestamp"],
+
+            signature=inner_packet["signature"],
+            signature_timestamp=inner_packet["signature_timestamp"],
+            sender_public_key_id=inner_packet["sender_public_key_id"],
+            leading_two_octets=inner_packet["leading_two_octets"],
+
+            session_key=outer_packet["session_key"],
+            recipient_public_key_id=outer_packet["recipient_public_key_id"],
+            algorithm=outer_packet["algorithm"],
+        )
+
+        # 5. Ako postoji potpis, proveravamo ga javnim kljucem posiljaoca.
+        signature_ok = None
+
+        if sign:
+            public_key = public_ring.get_public_key(msg.sender_public_key_id)
+            message_bytes = msg.get_data_bytes()
+
+            expected_octets = sha1(message_bytes)[:2].hex().upper()
+            leading_octets_ok = expected_octets == msg.leading_two_octets
+
+            rsa_signature_ok = rsa_verify(public_key, message_bytes, _b64d(msg.signature))
+
+            signature_ok = leading_octets_ok and rsa_signature_ok
+
+        return msg, signature_ok
