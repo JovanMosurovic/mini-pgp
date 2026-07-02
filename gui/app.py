@@ -75,6 +75,7 @@ class Controller:
         self._notify = notify or (lambda message: None)
         self.private_ring = PrivateKeyRing()
         self.public_ring = PublicKeyRing()
+        self.last_received_message = None
 
     def set_notifier(self, notify):
         self._notify = notify
@@ -93,6 +94,7 @@ class Controller:
             return
         try:
             key_id = self.private_ring.add(name, email, int(bits), password)
+            self._copy_private_public_key_to_public_ring(key_id)
         except Exception as e:
             messagebox.showerror("Greska pri generisanju", str(e))
             return
@@ -102,7 +104,9 @@ class Controller:
         if not key_id:
             messagebox.showinfo("Brisanje", "Nije izabran kljuc.")
             return
-        removed = self.private_ring.remove(key_id) or self.public_ring.remove(key_id)
+        removed_private = self.private_ring.remove(key_id)
+        removed_public = self.public_ring.remove(key_id)
+        removed = removed_private or removed_public
         if removed:
             self.status(f"Obrisan kljuc {key_id}.")
         else:
@@ -184,18 +188,152 @@ class Controller:
     def list_public_keys(self):
         return self.public_ring.to_rows()
 
+    def list_private_key_choices(self):
+        return [self._format_key_choice(row) for row in self.private_ring.to_rows()]
+
+    def list_public_key_choices(self):
+        return [self._format_key_choice(row) for row in self.public_ring.to_rows()]
+
     # --- Slanje -----------------------------------------------------------
     def send_message(self, options):
-        self._placeholder("Slanje poruke kroz PGP pipeline")
+        from core.message import PgpMessage
+        import os
+
+        output_file = options["output_file"].strip()
+        if not output_file:
+            messagebox.showerror("Slanje", "Izlazna datoteka je obavezna.")
+            return
+
+        try:
+            if options["input_file"].strip():
+                input_file = options["input_file"].strip()
+                with open(input_file, "rb") as f:
+                    data_bytes = f.read()
+                filename = os.path.basename(input_file)
+            else:
+                data_bytes = options["message"].encode("utf-8")
+                filename = "poruka.txt"
+
+            sender_key_id = self._key_id_or_first(options["signing_key"], self.private_ring)
+            recipient_key_id = self._key_id_or_first(options["recipient_key"], self.public_ring)
+
+            if options["sign"] and sender_key_id is None:
+                raise ValueError("Za potpisivanje je potreban privatni kljuc.")
+            if options["sign"] and not options["sign_password"]:
+                raise ValueError("Unesi lozinku privatnog kljuca za potpis.")
+            if options["encrypt"] and recipient_key_id is None:
+                raise ValueError("Za sifrovanje je potreban javni kljuc primaoca.")
+
+            msg = PgpMessage.create(filename, data_bytes)
+            msg.send(
+                output_file,
+                private_ring=self.private_ring,
+                sender_public_key_id=sender_key_id,
+                sender_password=options["sign_password"],
+                public_ring=self.public_ring,
+                recipient_public_key_id=recipient_key_id,
+                algorithm=options["symmetric_algo"],
+                sign=options["sign"],
+                encrypt=options["encrypt"],
+                compress=options["compress"],
+                radix64=options["radix"],
+            )
+        except Exception as e:
+            messagebox.showerror("Greska pri slanju", str(e))
+            return
+
+        self.status(f"PGP poruka sacuvana u {output_file}.")
+        messagebox.showinfo("Slanje", "PGP datoteka je uspesno kreirana.")
 
     # --- Prijem -----------------------------------------------------------
     def receive_message(self, options):
-        self._placeholder("Prijem: decode, decrypt, decompress, verify")
+        from core.message import PgpMessage
+
+        input_file = options["input_file"].strip()
+        if not input_file:
+            messagebox.showerror("Prijem", "Ulazna PGP datoteka je obavezna.")
+            return
+
+        try:
+            msg, signature_ok = PgpMessage.receive(
+                input_file,
+                private_ring=self.private_ring,
+                public_ring=self.public_ring,
+                receiver_password=options["receiver_password"],
+            )
+        except Exception as e:
+            messagebox.showerror("Greska pri prijemu", str(e))
+            return
+
+        self.last_received_message = msg
+        text_preview = self._message_preview(msg)
+        signature_text = self._signature_text(signature_ok)
+        self.status(f"PGP poruka obradjena. Potpis: {signature_text}.")
+        messagebox.showinfo(
+            "Prijem",
+            f"Poruka je uspesno obradjena.\n\n"
+            f"Fajl: {msg.filename or '-'}\n"
+            f"Potpis: {signature_text}\n\n"
+            f"{text_preview}",
+        )
+        return msg, signature_ok
 
     def save_received_message(self, path):
-        self._placeholder("Cuvanje originalne poruke")
+        path = path.strip()
+        if self.last_received_message is None:
+            messagebox.showinfo("Cuvanje", "Nema obradjene poruke za cuvanje.")
+            return
+        if not path:
+            messagebox.showinfo("Cuvanje", "Izaberi destinaciju za cuvanje.")
+            return
+
+        try:
+            with open(path, "wb") as f:
+                f.write(self.last_received_message.get_data_bytes())
+        except Exception as e:
+            messagebox.showerror("Greska pri cuvanju", str(e))
+            return
+
+        self.status(f"Originalna poruka sacuvana u {path}.")
+        messagebox.showinfo("Cuvanje", "Originalna poruka je sacuvana.")
 
     # --- Interno ----------------------------------------------------------
+    def _copy_private_public_key_to_public_ring(self, key_id):
+        from core.crypto import load_public_pem
+
+        entry = self.private_ring.find(key_id)
+        public_key = load_public_pem(entry["public_key_pem"].encode())
+        self.public_ring.add(entry["name"], entry["email"], public_key)
+
+    @staticmethod
+    def _format_key_choice(row):
+        _, key_id, name, email, bits = row
+        return f"{key_id} - {name} <{email}> ({bits})"
+
+    @staticmethod
+    def _key_id_or_first(value, ring):
+        value = value.strip()
+        if value and value != "automatski po Key ID":
+            return value.split(" ", 1)[0]
+        return next(iter(ring._entries), None)
+
+    @staticmethod
+    def _signature_text(signature_ok):
+        if signature_ok is None:
+            return "nije potpisana"
+        return "ispravan" if signature_ok else "neispravan"
+
+    @staticmethod
+    def _message_preview(msg):
+        data = msg.get_data_bytes()
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            return f"Binarna poruka ({len(data)} bajtova)."
+        if len(text) > 500:
+            return text[:500] + "\n..."
+        return text
+
     def _placeholder(self, action):
         self.status(f"Placeholder: {action}")
         messagebox.showinfo(
@@ -482,19 +620,20 @@ class SendTab(ttk.Frame):
         self.symmetric_algo_var = tk.StringVar(value="AES128")
 
         make_section(options, "Autenticnost", row=6)
-        make_labeled_combo(options, "Privatni kljuc za potpis", self.signing_key_var, [], row=7)
+        self.signing_key_combo = make_labeled_combo(options, "Privatni kljuc za potpis", self.signing_key_var, [], row=7)
         make_labeled_entry(options, "Lozinka privatnog kljuca", self.sign_password_var, row=9, show="*")
 
         ttk.Separator(options).grid(row=11, column=0, sticky="ew", pady=16)
 
         make_section(options, "Tajnost", row=12)
-        make_labeled_combo(options, "Javni kljuc primaoca", self.recipient_key_var, [], row=13)
+        self.recipient_key_combo = make_labeled_combo(options, "Javni kljuc primaoca", self.recipient_key_var, [], row=13)
         make_labeled_combo(options, "Simetricni algoritam", self.symmetric_algo_var, Theme.SYMMETRIC_ALGOS, row=15)
 
         ttk.Separator(options).grid(row=17, column=0, sticky="ew", pady=16)
 
         ttk.Button(options, text="Kreiraj PGP datoteku", style="Accent.TButton",
                    command=self._on_send).grid(row=18, column=0, sticky="ew")
+        self.refresh_key_choices()
 
     def _on_send(self):
         options = {
@@ -521,6 +660,26 @@ class SendTab(ttk.Frame):
         path = filedialog.asksaveasfilename(title="Izbor izlazne PGP datoteke")
         if path:
             variable.set(path)
+
+    def refresh_key_choices(self):
+        self._set_combo_values(
+            self.signing_key_combo,
+            self.signing_key_var,
+            self.controller.list_private_key_choices(),
+        )
+        self._set_combo_values(
+            self.recipient_key_combo,
+            self.recipient_key_var,
+            self.controller.list_public_key_choices(),
+        )
+
+    @staticmethod
+    def _set_combo_values(combo, variable, values):
+        current = variable.get()
+        combo["values"] = values
+        if current in values:
+            return
+        variable.set(values[0] if values else "")
 
 
 # ===========================================================================
@@ -552,7 +711,7 @@ class ReceiveTab(ttk.Frame):
         make_section(left, "Privatni kljuc za dekripciju", row=3)
         self.receiver_key_var = tk.StringVar(value="automatski po Key ID")
         self.receiver_password_var = tk.StringVar()
-        make_labeled_combo(left, "Kljuc primaoca", self.receiver_key_var, ["automatski po Key ID"], row=4)
+        self.receiver_key_combo = make_labeled_combo(left, "Kljuc primaoca", self.receiver_key_var, ["automatski po Key ID"], row=4)
         make_labeled_entry(left, "Lozinka privatnog kljuca", self.receiver_password_var, row=6, show="*")
 
         ttk.Separator(left).grid(row=8, column=0, sticky="ew", pady=16)
@@ -603,7 +762,10 @@ class ReceiveTab(ttk.Frame):
             "receiver_key": self.receiver_key_var.get(),
             "receiver_password": self.receiver_password_var.get(),
         }
-        self.controller.receive_message(options)
+        result = self.controller.receive_message(options)
+        if result is not None:
+            msg, signature_ok = result
+            self._show_received_message(msg, signature_ok)
 
     def _on_save(self):
         self.controller.save_received_message(self.save_message_var.get())
@@ -617,6 +779,41 @@ class ReceiveTab(ttk.Frame):
         path = filedialog.asksaveasfilename(title="Izbor destinacije")
         if path:
             variable.set(path)
+
+    def refresh_key_choices(self):
+        values = ["automatski po Key ID"] + self.controller.list_private_key_choices()
+        current = self.receiver_key_var.get()
+        self.receiver_key_combo["values"] = values
+        if current not in values:
+            self.receiver_key_var.set(values[0])
+
+    def _show_received_message(self, msg, signature_ok):
+        self.packet_labels["Radix-64"].configure(text="da" if msg.radix64 else "ne")
+        self.packet_labels["Sesijski kljuc"].configure(text="prisutan" if msg.encrypt else "nije koriscen")
+        self.packet_labels["Sifrovani podaci"].configure(text="da" if msg.encrypt else "ne")
+        self.packet_labels["Kompresija"].configure(text="da" if msg.compress else "ne")
+        self.packet_labels["Potpis"].configure(text="da" if msg.sign else "ne")
+        self.packet_labels["Poruka"].configure(text="ucitana")
+
+        self.status_labels["Dekripcija"].configure(text="uspesna" if msg.encrypt else "nije koriscena")
+        self.status_labels["Verifikacija potpisa"].configure(text=self._signature_status(signature_ok))
+        self.status_labels["Autor potpisa"].configure(text=msg.sender_public_key_id or "-")
+        self.status_labels["Key ID potpisnika"].configure(text=msg.sender_public_key_id or "-")
+        self.status_labels["Originalni naziv fajla"].configure(text=msg.filename or "-")
+
+        self.received_text.delete("1.0", tk.END)
+        data = msg.get_data_bytes()
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            text = f"[Binarni sadrzaj: {len(data)} bajtova]"
+        self.received_text.insert("1.0", text)
+
+    @staticmethod
+    def _signature_status(signature_ok):
+        if signature_ok is None:
+            return "nije potpisana"
+        return "ispravan" if signature_ok else "neispravan"
 
 
 # ===========================================================================
@@ -646,16 +843,18 @@ class MiniPGPApp(tk.Tk):
                  bg=Theme.HEADER, fg=Theme.HEADER_SUBTLE, font=(Theme.FONT, 10)).pack(anchor="w", pady=(4, 0))
 
     def _build_tabs(self):
-        notebook = ttk.Notebook(self)
-        notebook.pack(fill=tk.BOTH, expand=True, padx=18, pady=18)
+        self.notebook = ttk.Notebook(self)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=18, pady=18)
 
-        self.keys_tab = KeysTab(notebook, self.controller)
-        self.send_tab = SendTab(notebook, self.controller)
-        self.receive_tab = ReceiveTab(notebook, self.controller)
+        self.keys_tab = KeysTab(self.notebook, self.controller)
+        self.send_tab = SendTab(self.notebook, self.controller)
+        self.receive_tab = ReceiveTab(self.notebook, self.controller)
 
-        notebook.add(self.keys_tab, text="Kljucevi")
-        notebook.add(self.send_tab, text="Slanje")
-        notebook.add(self.receive_tab, text="Prijem")
+        self.notebook.add(self.keys_tab, text="Kljucevi")
+        self.notebook.add(self.send_tab, text="Slanje")
+        self.notebook.add(self.receive_tab, text="Prijem")
+        self.notebook.bind("<<NotebookTabChanged>>", self._refresh_key_choices)
+        self._refresh_key_choices()
 
     def _build_status_bar(self):
         self.status_var = tk.StringVar(value="Spremno.")
@@ -664,3 +863,7 @@ class MiniPGPApp(tk.Tk):
 
     def _set_status(self, message):
         self.status_var.set(message)
+
+    def _refresh_key_choices(self, event=None):
+        self.send_tab.refresh_key_choices()
+        self.receive_tab.refresh_key_choices()
