@@ -76,7 +76,10 @@ class Controller:
         self.private_ring = PrivateKeyRing()
         self.public_ring = PublicKeyRing()
         self.last_received_message = None
+        self.root = None
 
+    def set_root(self, root):
+        self.root = root
     def set_notifier(self, notify):
         self._notify = notify
 
@@ -84,25 +87,31 @@ class Controller:
         self._notify(message)
 
     # --- Kljucevi ---------------------------------------------------------
+    def get_key_details(self, key_id):
+        if not key_id:
+            return None
+        return self.private_ring.find(key_id) or self.public_ring.find(key_id)
+
+
     def generate_keypair(self, name, email, bits, password):
         name, email = name.strip(), email.strip()
         if not name or not email:
-            messagebox.showerror("Greska", "Ime i email su obavezni.")
+            messagebox.showerror("Greska", "Ime i email su obavezni.", parent=self.root)
             return
         if not password:
-            messagebox.showerror("Greska", "Lozinka za privatni kljuc je obavezna.")
+            messagebox.showerror("Greska", "Lozinka za privatni kljuc je obavezna.", parent=self.root)
             return
         try:
             key_id = self.private_ring.add(name, email, int(bits), password)
             self._copy_private_public_key_to_public_ring(key_id)
         except Exception as e:
-            messagebox.showerror("Greska pri generisanju", str(e))
+            messagebox.showerror("Greska pri generisanju", str(e), parent=self.root)
             return
         self.status(f"Generisan par kljuceva (Key ID {key_id}).")
 
     def delete_key(self, key_id):
         if not key_id:
-            messagebox.showinfo("Brisanje", "Nije izabran kljuc.")
+            messagebox.showinfo("Brisanje", "Nije izabran kljuc.", parent=self.root)
             return
         removed_private = self.private_ring.remove(key_id)
         removed_public = self.public_ring.remove(key_id)
@@ -110,45 +119,45 @@ class Controller:
         if removed:
             self.status(f"Obrisan kljuc {key_id}.")
         else:
-            messagebox.showinfo("Brisanje", "Kljuc nije pronadjen.")
+            messagebox.showinfo("Brisanje", "Kljuc nije pronadjen.",parent=self.root)
 
     def import_public_pem(self, path):
-        name = simpledialog.askstring("Uvoz javnog kljuca", "Ime vlasnika:")
+        name = simpledialog.askstring("Uvoz javnog kljuca", "Ime vlasnika:", parent=self.root)
         if not name:
             return
-        email = simpledialog.askstring("Uvoz javnog kljuca", "Email vlasnika:")
+        email = simpledialog.askstring("Uvoz javnog kljuca", "Email vlasnika:", parent=self.root)
         if not email:
             return
         try:
             key_id = self.public_ring.import_pem(path, name, email)
         except Exception as e:
-            messagebox.showerror("Greska pri uvozu", str(e))
+            messagebox.showerror("Greska pri uvozu", str(e),parent=self.root)
             return
         self.status(f"Uvezen javni kljuc {key_id}.")
 
     def import_private_pem(self, path):
-        file_password = simpledialog.askstring("Uvoz para", "Lozinka .pem fajla:", show="*")
+        file_password = simpledialog.askstring("Uvoz para", "Lozinka .pem fajla:", show="*", parent=self.root)
         if file_password is None:
             return
-        name = simpledialog.askstring("Uvoz para", "Ime vlasnika:")
+        name = simpledialog.askstring("Uvoz para", "Ime vlasnika:", parent=self.root)
         if not name:
             return
-        email = simpledialog.askstring("Uvoz para", "Email vlasnika:")
+        email = simpledialog.askstring("Uvoz para", "Email vlasnika:", parent=self.root)
         if not email:
             return
-        ring_password = simpledialog.askstring("Uvoz para", "Nova lozinka za cuvanje u prstenu:", show="*")
+        ring_password = simpledialog.askstring("Uvoz para", "Nova lozinka za cuvanje u prstenu:", show="*", parent=self.root)
         if not ring_password:
             return
         try:
             key_id = self.private_ring.import_pem(path, file_password, name, email, ring_password)
         except Exception as e:
-            messagebox.showerror("Greska pri uvozu", str(e))
+            messagebox.showerror("Greska pri uvozu", str(e),parent=self.root)
             return
         self.status(f"Uvezen par kljuceva {key_id}.")
 
     def export_public_pem(self, key_id, path):
         if not key_id:
-            messagebox.showinfo("Izvoz", "Nije izabran kljuc.")
+            messagebox.showinfo("Izvoz", "Nije izabran kljuc.",parent=self.root)
             return
         try:
             entry = self.private_ring.find(key_id) or self.public_ring.get(key_id)
@@ -157,28 +166,28 @@ class Controller:
             with open(path, "w") as f:
                 f.write(entry["public_key_pem"])
         except Exception as e:
-            messagebox.showerror("Greska pri izvozu", str(e))
+            messagebox.showerror("Greska pri izvozu", str(e),parent=self.root)
             return
         self.status(f"Izvezen javni kljuc {key_id}.")
 
     def export_keypair(self, key_id, path):
         if not key_id:
-            messagebox.showinfo("Izvoz", "Nije izabran kljuc.")
+            messagebox.showinfo("Izvoz", "Nije izabran kljuc.",parent=self.root)
             return
         if self.private_ring.find(key_id) is None:
             messagebox.showerror("Izvoz para",
-                                 "Ceo par se moze izvesti samo iz prstena privatnih kljuceva.")
+                                 "Ceo par se moze izvesti samo iz prstena privatnih kljuceva.",parent=self.root)
             return
-        ring_password = simpledialog.askstring("Izvoz para", "Lozinka privatnog kljuca:", show="*")
+        ring_password = simpledialog.askstring("Izvoz para", "Lozinka privatnog kljuca:", show="*", parent=self.root)
         if not ring_password:
             return
-        out_password = simpledialog.askstring("Izvoz para", "Lozinka za izvezeni .pem:", show="*")
+        out_password = simpledialog.askstring("Izvoz para", "Lozinka za izvezeni .pem:", show="*", parent=self.root)
         if not out_password:
             return
         try:
             self.private_ring.export_pem(key_id, path, ring_password, out_password)
         except Exception as e:
-            messagebox.showerror("Greska pri izvozu", str(e))
+            messagebox.showerror("Greska pri izvozu", str(e),parent=self.root)
             return
         self.status(f"Izvezen par kljuceva {key_id}.")
 
@@ -201,7 +210,7 @@ class Controller:
 
         output_file = options["output_file"].strip()
         if not output_file:
-            messagebox.showerror("Slanje", "Izlazna datoteka je obavezna.")
+            messagebox.showerror("Slanje", "Izlazna datoteka je obavezna.",parent=self.root)
             return
 
         try:
@@ -239,11 +248,11 @@ class Controller:
                 radix64=options["radix"],
             )
         except Exception as e:
-            messagebox.showerror("Greska pri slanju", str(e))
+            messagebox.showerror("Greska pri slanju", str(e),parent=self.root)
             return
 
         self.status(f"PGP poruka sacuvana u {output_file}.")
-        messagebox.showinfo("Slanje", "PGP datoteka je uspesno kreirana.")
+        messagebox.showinfo("Slanje", "PGP datoteka je uspesno kreirana.",parent=self.root)
 
     # --- Prijem -----------------------------------------------------------
     def receive_message(self, options):
@@ -251,7 +260,7 @@ class Controller:
 
         input_file = options["input_file"].strip()
         if not input_file:
-            messagebox.showerror("Prijem", "Ulazna PGP datoteka je obavezna.")
+            messagebox.showerror("Prijem", "Ulazna PGP datoteka je obavezna.",parent=self.root)
             return
 
         try:
@@ -262,7 +271,7 @@ class Controller:
                 receiver_password=options["receiver_password"],
             )
         except Exception as e:
-            messagebox.showerror("Greska pri prijemu", str(e))
+            messagebox.showerror("Greska pri prijemu", str(e),parent=self.root)
             return
 
         self.last_received_message = msg
@@ -274,28 +283,28 @@ class Controller:
             f"Poruka je uspesno obradjena.\n\n"
             f"Fajl: {msg.filename or '-'}\n"
             f"Potpis: {signature_text}\n\n"
-            f"{text_preview}",
+            f"{text_preview}",parent=self.root
         )
         return msg, signature_ok
 
     def save_received_message(self, path):
         path = path.strip()
         if self.last_received_message is None:
-            messagebox.showinfo("Cuvanje", "Nema obradjene poruke za cuvanje.")
+            messagebox.showinfo("Cuvanje", "Nema obradjene poruke za cuvanje.",parent=self.root)
             return
         if not path:
-            messagebox.showinfo("Cuvanje", "Izaberi destinaciju za cuvanje.")
+            messagebox.showinfo("Cuvanje", "Izaberi destinaciju za cuvanje.",parent=self.root)
             return
 
         try:
             with open(path, "wb") as f:
                 f.write(self.last_received_message.get_data_bytes())
         except Exception as e:
-            messagebox.showerror("Greska pri cuvanju", str(e))
+            messagebox.showerror("Greska pri cuvanju", str(e),parent=self.root)
             return
 
         self.status(f"Originalna poruka sacuvana u {path}.")
-        messagebox.showinfo("Cuvanje", "Originalna poruka je sacuvana.")
+        messagebox.showinfo("Cuvanje", "Originalna poruka je sacuvana.",parent=self.root)
 
     # --- Interno ----------------------------------------------------------
     def _copy_private_public_key_to_public_ring(self, key_id):
@@ -338,7 +347,7 @@ class Controller:
         self.status(f"Placeholder: {action}")
         messagebox.showinfo(
             "MiniPGP placeholder",
-            f"Ova akcija je jos uvek placeholder.\n\nKasnije se povezuje na: {action}.",
+            f"Ova akcija je jos uvek placeholder.\n\nKasnije se povezuje na: {action}.",parent=self.root
         )
 
     @staticmethod
@@ -503,6 +512,14 @@ class KeysTab(ttk.Frame):
         make_section(parent, "Prsten javnih kljuceva", row=2, pady=(16, 0))
         self.public_tree = make_key_tree(parent, row=3)
 
+        make_section(parent, "Detalji izabranog kljuca", row=4, pady=(16, 0))
+        self.details_text = tk.Text(parent, wrap="word", height=10, state="disabled")
+        self.details_text.grid(row=5, column=0, sticky="nsew", pady=(6, 0))
+        parent.rowconfigure(5, weight=1)
+
+        self.private_tree.bind("<<TreeviewSelect>>", self._on_key_selected)
+        self.public_tree.bind("<<TreeviewSelect>>", self._on_key_selected)
+
     # --- akcije ---
     def _on_generate(self):
         self.controller.generate_keypair(
@@ -543,6 +560,30 @@ class KeysTab(ttk.Frame):
             if selection:
                 return tree.item(selection[0], "values")[1]
         return None
+
+    def _on_key_selected(self, event):
+        tree = event.widget
+        selection = tree.selection()
+        key_id = tree.item(selection[0], "values")[1] if selection else None
+
+        entry = self.controller.get_key_details(key_id)
+        self.details_text.configure(state="normal")
+        self.details_text.delete("1.0", tk.END)
+        self.details_text.insert(
+            "1.0", self._format_entry(entry) if entry else "Nije izabran kljuc."
+        )
+        self.details_text.configure(state="disabled")
+
+    @staticmethod
+    def _format_entry(entry):
+        lines = []
+        for key, value in entry.items():
+            if key == "encrypted_private":
+                value = f"{value[:60]}... ({len(value)} karaktera)"
+            elif key == "public_key_pem":
+                value = value.strip()
+            lines.append(f"{key}:\n  {value}")
+        return "\n\n".join(lines)
 
     def refresh_keyrings(self):
         for tree, items in ((self.private_tree, self.controller.list_private_keys()),
@@ -828,6 +869,7 @@ class MiniPGPApp(tk.Tk):
 
         self.controller = controller or Controller()
         self.controller.set_notifier(self._set_status)
+        self.controller.set_root(self)
 
         apply_theme(self)
         self._build_header()
