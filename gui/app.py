@@ -864,8 +864,8 @@ class MiniPGPApp(tk.Tk):
     def __init__(self, controller=None):
         super().__init__()
         self.title("MiniPGP")
-        self.geometry("1180x760")
-        self.minsize(1020, 680)
+        self.geometry("1400x900")
+        self.minsize(1200, 760)
 
         self.controller = controller or Controller()
         self.controller.set_notifier(self._set_status)
