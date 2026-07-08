@@ -881,7 +881,7 @@ class MiniPGPApp(tk.Tk):
         header.pack(fill=tk.X)
         tk.Label(header, text="MiniPGP", bg=Theme.HEADER, fg=Theme.WHITE,
                  font=(Theme.FONT, 20, "bold")).pack(anchor="w")
-        tk.Label(header, text="GUI za RSA kljuceve, slanje i prijem PGP poruka",
+        tk.Label(header, text="",
                  bg=Theme.HEADER, fg=Theme.HEADER_SUBTLE, font=(Theme.FONT, 10)).pack(anchor="w", pady=(4, 0))
 
     def _build_tabs(self):
