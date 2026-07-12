@@ -134,7 +134,7 @@ mini-pgp/
 ## Assignment Reference
 
 Course: **Computer Security ([13S114ZP](https://www.etf.bg.ac.rs/en/fis/karton_predmeta/13S114ZP-2013))**  
-Academic Year: **2025/2026**
+Academic Year: **2025/2026**  
 University of Belgrade, School of Electrical Engineering  
 Major: Software Engineering
 
