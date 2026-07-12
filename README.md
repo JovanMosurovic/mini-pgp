@@ -25,6 +25,14 @@ Messages can be digitally signed, compressed, encrypted and converted to Radix-6
 - [Project Structure](#project-structure)
 - [Assignment Reference](#assignment-reference)
 
+## User Interface
+
+<p align="center">
+  <img src="docs/images/mini-pgp-user-interface_1.jpg" width="32%" alt="Key management">
+  <img src="docs/images/mini-pgp-user-interface_2.jpg" width="32%" alt="Message sending">
+  <img src="docs/images/mini-pgp-user-interface_3.jpg" width="32%" alt="Message receiving">
+</p>
+
 ## Features
 
 - RSA key pair generation using 1024-bit or 2048-bit keys
@@ -93,14 +101,6 @@ The public key ring stores public keys belonging to other users. These keys are 
 
 <p align="center">
   <img src="docs/images/public-key-ring.png" width="70%" alt="PGP public key ring">
-</p>
-
-## User Interface
-
-<p align="center">
-  <img src="docs/images/mini-pgp-user-interface_1.jpg" width="32%" alt="Key management">
-  <img src="docs/images/mini-pgp-user-interface_2.jpg" width="32%" alt="Message sending">
-  <img src="docs/images/mini-pgp-user-interface_3.jpg" width="32%" alt="Message receiving">
 </p>
 
 ## Running the Application
